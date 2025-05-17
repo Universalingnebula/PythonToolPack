@@ -28,6 +28,9 @@
   • Открытие файлов из собственных репозиториев  
   • Проверка наличия обновлений самой программы
 
+-**Мягкая структура**
+  • Возможность использования приложения без нужных для него библиотек
+
 ---
 
 ## Зачем этот проект?
@@ -43,13 +46,13 @@
 1. Установите Python 3.8+  
 2. Установите зависимости (если нужны):  
    ```
-   pip install requests pyinstaller
+   pip install requests pyinstaller jedi
    ```
 3. Запустите файл:
    ```
    python pythontoolpack.py
    ```
-4. (Для работы с GitHub и конвертации в exe потребуется PyInstaller и Personal Access Token.)
+4. (Для работы с GitHub и конвертации в exe потребуется PyInstaller, Personal Access Token и requests.)
 
 ---
 
