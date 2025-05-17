@@ -58,6 +58,7 @@
 
 Свободное использование с указанием автора.  
 Автор: [Universalingnebula](https://github.com/Universalingnebula)
+Подробнее в файле LICENSE
 
 ---
 
