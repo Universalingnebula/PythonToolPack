@@ -8,6 +8,14 @@ import json
 import base64
 import tempfile
 
+# PyInstaller hack: скрыть консольное окно в exe
+if hasattr(sys, 'frozen'):
+    try:
+        import ctypes
+        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+    except Exception:
+        pass
+
 # ==== Проверка наличия requests ====
 try:
     import requests
@@ -21,6 +29,12 @@ try:
     HAS_JEDI = True
 except ImportError:
     HAS_JEDI = False
+
+try:
+    from PyQt5.QtWidgets import QCheckBox, QToolBar
+    HAS_PYQT5 = True
+except ImportError:
+    HAS_PYQT5 = False
 
 CONFIG_FILE = "config.json"
 
@@ -159,7 +173,6 @@ def fetch_repo_tree(repo, path=""):
     if resp.status_code != 200:
         return []
     data = resp.json()
-    # always return as list
     if isinstance(data, dict):
         data = [data]
     return data
@@ -205,11 +218,132 @@ def check_update():
     else:
         messagebox.showerror("Обновление", f"Не удалось проверить обновления. Код: {resp.status_code}")
 
-# ===== GUI =====
+# ===== Основной GUI =====
 
-root = tk.Tk()
-root.title("PythonToolPack")
-root.geometry("1100x750")
+def show_editor_mode():
+    frame_install.pack_forget()
+    frame_all.pack_forget()
+    frame_transform.pack_forget()
+    frame_help.pack_forget()
+    frame_editor.pack(fill='both', expand=True)
+    btn_install_mode.config(relief='raised')
+    btn_all_mode.config(relief='raised')
+    btn_transform_mode.config(relief='raised')
+    btn_editor_mode.config(relief='sunken')
+    btn_help.config(relief='raised')
+
+def show_install_mode():
+    frame_all.pack_forget()
+    frame_transform.pack_forget()
+    frame_editor.pack_forget()
+    frame_help.pack_forget()
+    frame_install.pack(fill='both', expand=True)
+    btn_install_mode.config(relief='sunken')
+    btn_all_mode.config(relief='raised')
+    btn_transform_mode.config(relief='raised')
+    btn_editor_mode.config(relief='raised')
+    btn_help.config(relief='raised')
+
+def show_all_mode():
+    frame_install.pack_forget()
+    frame_transform.pack_forget()
+    frame_editor.pack_forget()
+    frame_help.pack_forget()
+    frame_all.pack(fill='both', expand=True)
+    btn_install_mode.config(relief='raised')
+    btn_all_mode.config(relief='sunken')
+    btn_transform_mode.config(relief='raised')
+    btn_editor_mode.config(relief='raised')
+    btn_help.config(relief='raised')
+    clear_frame(scrollable_all)
+    progress_bar.pack(pady=5)
+    progress_bar.start(10)
+    def load():
+        packages = fetch_installed_packages()
+        def draw():
+            progress_bar.stop()
+            progress_bar.pack_forget()
+            if not packages:
+                tk.Label(scrollable_all, text="Пакеты не найдены", font=("Arial", 14)).pack(pady=30)
+            for pkg in packages:
+                f = tk.Frame(scrollable_all, pady=7, bd=1, relief='solid')
+                f.pack(fill='x', padx=5)
+                tk.Label(f, text=pkg['name'], font=("Arial", 14, "bold")).pack(anchor='w')
+                tk.Label(f, text=f"Версия: {pkg['version']}", font=("Arial", 10)).pack(anchor='w')
+                btns = tk.Frame(f)
+                btns.pack(anchor='w', pady=5)
+                def uninstall(name=pkg['name']):
+                    answer = messagebox.askyesno("Подтверждение", f"Удалить {name}?")
+                    if not answer:
+                        return
+                    label_status.config(text=f"Удаление {name}...")
+                    progress_bar.pack(pady=5)
+                    progress_bar.start(10)
+                    def run():
+                        result = subprocess.run([get_default_python(), '-m', 'pip', 'uninstall', '-y', name],
+                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        msg = result.stdout + '\n' + result.stderr
+                        def update():
+                            progress_bar.stop()
+                            progress_bar.pack_forget()
+                            label_status.config(text=msg)
+                            show_all_mode()
+                        root.after(0, update)
+                    threading.Thread(target=run).start()
+                def upgrade(name=pkg['name']):
+                    label_status.config(text=f"Обновление {name}...")
+                    progress_bar.pack(pady=5)
+                    progress_bar.start(10)
+                    def run():
+                        subprocess.run([get_default_python(), '-m', 'pip', 'install', '--upgrade', name])
+                        root.after(0, show_all_mode)
+                    threading.Thread(target=run).start()
+                def show_details(name=pkg['name']):
+                    result = subprocess.run([get_default_python(), '-m', 'pip', 'show', name],
+                                            stdout=subprocess.PIPE, text=True)
+                    win = tk.Toplevel(root)
+                    win.title(f"Информация о {name}")
+                    txt = tk.Text(win, wrap='word')
+                    txt.insert('1.0', result.stdout)
+                    txt.config(state='normal')
+                    txt.pack(expand=True, fill='both')
+                tk.Button(btns, text="Удалить", command=uninstall).pack(side='left', padx=5)
+                tk.Button(btns, text="Обновить", command=upgrade).pack(side='left', padx=5)
+                tk.Button(btns, text="Подробнее", command=show_details).pack(side='left', padx=5)
+        root.after(0, draw)
+    threading.Thread(target=load).start()
+
+def show_transform_mode():
+    frame_install.pack_forget()
+    frame_all.pack_forget()
+    frame_editor.pack_forget()
+    frame_help.pack_forget()
+    frame_transform.pack(fill='both', expand=True)
+    btn_install_mode.config(relief='raised')
+    btn_all_mode.config(relief='raised')
+    btn_transform_mode.config(relief='sunken')
+    btn_editor_mode.config(relief='raised')
+    btn_help.config(relief='raised')
+
+def show_help_mode():
+    frame_install.pack_forget()
+    frame_all.pack_forget()
+    frame_transform.pack_forget()
+    frame_editor.pack_forget()
+    frame_help.pack(fill='both', expand=True)
+    btn_install_mode.config(relief='raised')
+    btn_all_mode.config(relief='raised')
+    btn_transform_mode.config(relief='raised')
+    btn_editor_mode.config(relief='raised')
+    btn_help.config(relief='sunken')
+
+def make_root():
+    r = tk.Tk()
+    r.title("PythonToolPack")
+    r.geometry("1100x750")
+    return r
+
+root = make_root()
 
 frame_top = tk.Frame(root)
 frame_top.pack(fill='x')
@@ -325,18 +459,17 @@ def run_code():
     result_win.title("Результат выполнения")
     txt = tk.Text(result_win, wrap='word')
     txt.pack(expand=True, fill='both')
-    txt.config(state="disabled")  # сделать только для чтения сразу
-
+    txt.config(state="disabled")
     def run():
         try:
             proc = subprocess.run([python_path, fname], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             res = proc.stdout
         except Exception as e:
             res = str(e)
-        txt.config(state="normal")         # разрешить вставку
+        txt.config(state="normal")
         txt.delete("1.0", tk.END)
         txt.insert('end', res)
-        txt.config(state="disabled")       # снова только для чтения
+        txt.config(state="disabled")
         os.unlink(fname)
     threading.Thread(target=run).start()
 
@@ -475,7 +608,6 @@ def github_open_in_editor():
     cur_repo = [None]
     cur_path = [""]
 
-    # Загрузка репозиториев
     def load_repos():
         repo_list.delete(0, tk.END)
         repo_list.insert(tk.END, "Загрузка...")
@@ -547,7 +679,7 @@ def github_open_in_editor():
                         editor_text.delete(1.0, tk.END)
                         editor_text.insert(1.0, content)
                         set_editor_filename(os.path.basename(selected_file))
-                        editor_text.filepath = None # не локальный путь
+                        editor_text.filepath = None
                         editor_set_title(selected_file + " (GitHub)")
                         win.destroy()
                     else:
@@ -574,6 +706,130 @@ tk.Label(toolbar, text="Имя файла:").pack(side='left', padx=5)
 editor_filename_entry = tk.Entry(toolbar, width=30)
 editor_filename_entry.pack(side='left')
 
+# ========== ДОБАВЛЕНО: Кнопка "Связь" и функционал jedi для редактора ==========
+import keyword
+import threading
+
+# Цвета для типов
+SVYAZ_COLORS = {
+    "variable": "#fff59d",
+    "function": "#80d8ff",
+    "class": "#b9f6ca",
+}
+svyaz_tag = "svyaz_highlight"
+
+# Проверяем наличие jedi
+try:
+    import jedi
+    HAS_JEDI = True
+except ImportError:
+    HAS_JEDI = False
+
+# Для debounce
+highlight_job = [None]  # используем список чтобы изменять из вложенной функции
+highlight_args = [None]
+
+def is_inside_string_or_comment(row, col, code_lines):
+    if row-1 >= len(code_lines): return False
+    text = code_lines[row-1]
+    comment_pos = text.find('#')
+    if comment_pos != -1 and col >= comment_pos: return True
+    in_str = False
+    quote = None
+    for i, ch in enumerate(text):
+        if ch in ('"', "'"):
+            if not in_str:
+                in_str = True
+                quote = ch
+            elif ch == quote:
+                in_str = False
+                quote = None
+        if i == col:
+            break
+    return in_str
+
+def clear_svyaz_highlight():
+    editor_text.tag_remove(svyaz_tag, "1.0", tk.END)
+
+def highlight_svyaz(event=None):
+    if not svyaz_mode.get():
+        clear_svyaz_highlight()
+        return
+    # Дебаунс: отменяем старую задачу, если она запланирована
+    if highlight_job[0]:
+        root.after_cancel(highlight_job[0])
+    # Сохраняем последние параметры курсора и текста
+    index = editor_text.index(tk.INSERT)
+    code = editor_text.get("1.0", "end-1c")
+    highlight_args[0] = (index, code)
+    # Запускаем подсветку с задержкой (например, 120 мс(изменено до 65))
+    highlight_job[0] = root.after(65, run_highlight_thread)
+
+def run_highlight_thread():
+    index, code = highlight_args[0]
+    row, col = map(int, index.split('.'))
+    code_lines = code.splitlines()
+    def do_jedi():
+        try:
+            script = jedi.Script(code, path='')
+            names = script.get_references(line=row, column=col, include_builtins=False)
+        except Exception:
+            names = []
+        root.after(0, lambda: apply_highlight(names, row, col, code_lines))
+    threading.Thread(target=do_jedi, daemon=True).start()
+
+def apply_highlight(names, row, col, code_lines):
+    clear_svyaz_highlight()
+    if not names: return
+    hit = None
+    for name in names:
+        if name.line == row and name.column <= col < name.column + len(name.name):
+            hit = name
+            break
+    if not hit: return
+    word = hit.name
+    typ = getattr(hit, 'type', 'variable')
+    if word in keyword.kwlist: return
+    if is_inside_string_or_comment(row, col, code_lines): return
+    tag_color = SVYAZ_COLORS.get(typ, "#ffd180")
+    pos = "1.0"
+    while True:
+        pos = editor_text.search(rf'\y{word}\y', pos, stopindex=tk.END, regexp=True)
+        if not pos: break
+        lastidx = f"{pos}+{len(word)}c"
+        this_row, this_col = map(int, pos.split('.'))
+        if word in keyword.kwlist or is_inside_string_or_comment(this_row, this_col, code_lines):
+            pos = lastidx
+            continue
+        editor_text.tag_add(svyaz_tag, pos, lastidx)
+        pos = lastidx
+    editor_text.tag_config(svyaz_tag, background=tag_color)
+
+def goto_svyaz_definition(event=None):
+    if not svyaz_mode.get():
+        return
+    defn = getattr(editor_text, "_svyaz_last_def", None)
+    if not defn or defn.line is None:
+        return
+    editor_text.mark_set("insert", f"{defn.line}.{defn.column}")
+    editor_text.see(f"{defn.line}.0")
+    highlight_svyaz()
+
+def on_svyaz_toggle():
+    if svyaz_mode.get():
+        highlight_svyaz()
+        editor_text.bind("<KeyRelease>", highlight_svyaz)
+        editor_text.bind("<Motion>", highlight_svyaz)  # Наведение мыши!
+        editor_text.bind("<Control-Return>", goto_svyaz_definition)
+    else:
+        clear_svyaz_highlight()
+        editor_text.unbind("<KeyRelease>")
+        editor_text.unbind("<Motion>")
+        editor_text.unbind("<Control-Return>")
+
+if HAS_JEDI:
+    svyaz_mode = tk.BooleanVar(value=False)
+    tk.Checkbutton(toolbar, text="Связь", variable=svyaz_mode, command=on_svyaz_toggle).pack(side='left', padx=5)
 # ========== Остальные вкладки: Установка, Список, Трансформация, Справка ==========
 
 frame_install = tk.Frame(root)
@@ -626,6 +882,15 @@ def install_package():
 
 btn_install = tk.Button(frame_install, text="Установить", command=install_package)
 btn_install.pack(pady=10)
+
+# ... (остальные вкладки, функции, переключатели - без изменений) ...
+
+btn_install_mode.config(command=show_install_mode)
+btn_all_mode.config(command=show_all_mode)
+btn_transform_mode.config(command=show_transform_mode)
+btn_editor_mode.config(command=show_editor_mode)
+btn_help.config(command=show_help_mode)
+update_github_auth_button()
 
 # ========== Список библиотек ==========
 
@@ -881,7 +1146,7 @@ PythonToolPack:
 
 1. Установка библиотек:
    - Введите имя (и версию) библиотеки, нажмите "Установить".
-   - Можно указать путь к своему Python.
+   - Можно по желанию указать путь к своему Python.
 
 2. Управление библиотеками:
    - Смотрите список, обновляйте, удаляйте, получайте информацию.
@@ -889,144 +1154,22 @@ PythonToolPack:
 
 3. Трансформация .py в .exe:
    - Выберите исходные файлы, папку для exe, иконку (по желанию).
-   - Нажмите "Создать exe".
-   - Важно: при компиляции нескольких файлов они объеденяться в один файл
+   - Нажмите "Создать exe".(Пока работает только  --onefile)
 
 4. Редактор:
    - Открывайте, редактируйте, сохраняйте, выполняйте Python-код.
    - Поиск, замена, выделение, переход к строке, копирование и вставка.
    - Кнопка "Открыть с GitHub" — для открытия файлов из ваших GitHub-репозиториев.
-   - Автодополнение кода работает по сочетанию Ctrl+Пробел
-   - Интеллектуальные подсказки работают по сочетанию Ctrl+I
    - Для автодополнения и интеллектуальных подсказок установите библиотеку jedi.
+                                                  ЭКСКЛЮЗИВНАЯ ФУНКЦИЯ!
+   - Кнопка "Связь" включает интеллектуальную подсветку и переход к определению (Ctrl+Enter).
 
-5. Кнопки справа сверху:
+5. GitHub:
    - Авторизация через токен позволяет работать с вашими репозиториями и обновлять приложение.
-   - Для работы с GitHub установите библиотеку requests
-   - Кнопка "Справка" открывает справку, которую вы прямо сейчас читаете
 
 Удачного использования!
 """)
 help_text.config(state='disabled')
-
-# ===== Переключение вкладок =====
-
-def show_editor_mode():
-    frame_install.pack_forget()
-    frame_all.pack_forget()
-    frame_transform.pack_forget()
-    frame_help.pack_forget()
-    frame_editor.pack(fill='both', expand=True)
-    btn_install_mode.config(relief='raised')
-    btn_all_mode.config(relief='raised')
-    btn_transform_mode.config(relief='raised')
-    btn_editor_mode.config(relief='sunken')
-    btn_help.config(relief='raised')
-
-def show_install_mode():
-    frame_all.pack_forget()
-    frame_transform.pack_forget()
-    frame_editor.pack_forget()
-    frame_help.pack_forget()
-    frame_install.pack(fill='both', expand=True)
-    btn_install_mode.config(relief='sunken')
-    btn_all_mode.config(relief='raised')
-    btn_transform_mode.config(relief='raised')
-    btn_editor_mode.config(relief='raised')
-    btn_help.config(relief='raised')
-
-def show_all_mode():
-    frame_install.pack_forget()
-    frame_transform.pack_forget()
-    frame_editor.pack_forget()
-    frame_help.pack_forget()
-    frame_all.pack(fill='both', expand=True)
-    btn_install_mode.config(relief='raised')
-    btn_all_mode.config(relief='sunken')
-    btn_transform_mode.config(relief='raised')
-    btn_editor_mode.config(relief='raised')
-    btn_help.config(relief='raised')
-    clear_frame(scrollable_all)
-    progress_bar.pack(pady=5)
-    progress_bar.start(10)
-    def load():
-        packages = fetch_installed_packages()
-        def draw():
-            progress_bar.stop()
-            progress_bar.pack_forget()
-            if not packages:
-                tk.Label(scrollable_all, text="Пакеты не найдены", font=("Arial", 14)).pack(pady=30)
-            for pkg in packages:
-                f = tk.Frame(scrollable_all, pady=7, bd=1, relief='solid')
-                f.pack(fill='x', padx=5)
-                tk.Label(f, text=pkg['name'], font=("Arial", 14, "bold")).pack(anchor='w')
-                tk.Label(f, text=f"Версия: {pkg['version']}", font=("Arial", 10)).pack(anchor='w')
-                btns = tk.Frame(f)
-                btns.pack(anchor='w', pady=5)
-                def uninstall(name=pkg['name']):
-                    answer = messagebox.askyesno("Подтверждение", f"Удалить {name}?")
-                    if not answer:
-                        return
-                    label_status.config(text=f"Удаление {name}...")
-                    progress_bar.pack(pady=5)
-                    progress_bar.start(10)
-                    def run():
-                        result = subprocess.run([get_default_python(), '-m', 'pip', 'uninstall', '-y', name],
-                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                        msg = result.stdout + '\n' + result.stderr
-                        def update():
-                            progress_bar.stop()
-                            progress_bar.pack_forget()
-                            label_status.config(text=msg)
-                            show_all_mode()
-                        root.after(0, update)
-                    threading.Thread(target=run).start()
-                def upgrade(name=pkg['name']):
-                    label_status.config(text=f"Обновление {name}...")
-                    progress_bar.pack(pady=5)
-                    progress_bar.start(10)
-                    def run():
-                        subprocess.run([get_default_python(), '-m', 'pip', 'install', '--upgrade', name])
-                        root.after(0, show_all_mode)
-                    threading.Thread(target=run).start()
-                def show_details(name=pkg['name']):
-                    result = subprocess.run([get_default_python(), '-m', 'pip', 'show', name],
-                                            stdout=subprocess.PIPE, text=True)
-                    win = tk.Toplevel(root)
-                    win.title(f"Информация о {name}")
-                    txt = tk.Text(win, wrap='word')
-                    txt.insert('1.0', result.stdout)
-                    txt.config(state='normal')
-                    txt.pack(expand=True, fill='both')
-                tk.Button(btns, text="Удалить", command=uninstall).pack(side='left', padx=5)
-                tk.Button(btns, text="Обновить", command=upgrade).pack(side='left', padx=5)
-                tk.Button(btns, text="Подробнее", command=show_details).pack(side='left', padx=5)
-        root.after(0, draw)
-    threading.Thread(target=load).start()
-
-def show_transform_mode():
-    frame_install.pack_forget()
-    frame_all.pack_forget()
-    frame_editor.pack_forget()
-    frame_help.pack_forget()
-    frame_transform.pack(fill='both', expand=True)
-    btn_install_mode.config(relief='raised')
-    btn_all_mode.config(relief='raised')
-    btn_transform_mode.config(relief='sunken')
-    btn_editor_mode.config(relief='raised')
-    btn_help.config(relief='raised')
-
-def show_help_mode():
-    frame_install.pack_forget()
-    frame_all.pack_forget()
-    frame_transform.pack_forget()
-    frame_editor.pack_forget()
-    frame_help.pack(fill='both', expand=True)
-    btn_install_mode.config(relief='raised')
-    btn_all_mode.config(relief='raised')
-    btn_transform_mode.config(relief='raised')
-    btn_editor_mode.config(relief='raised')
-    btn_help.config(relief='sunken')
 
 btn_install_mode.config(command=show_install_mode)
 btn_all_mode.config(command=show_all_mode)
@@ -1035,5 +1178,6 @@ btn_editor_mode.config(command=show_editor_mode)
 btn_help.config(command=show_help_mode)
 update_github_auth_button()
 
-show_install_mode()
-root.mainloop()
+if __name__ == "__main__":
+    show_install_mode()
+    root.mainloop()
